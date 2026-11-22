@@ -1,0 +1,81 @@
+// main.ts — TikTok ad entry for make.fun bring-the-humans-03 ("What is make.fun?").
+// Node 22, stdlib only. Copies VIDEO.json into the output directory and
+// validates that it names a real TikTok video posted from one of Budi's
+// accounts. This entry posts from @approximatelly (Budi's other TikTok
+// account); the bounty account @approximatelly888 and its earlier handle
+// @Approximatelly6 are also accepted, since all three name accounts this
+// entry may post from.
+//
+// The repo's VIDEO.json ships with the placeholder URL
+// https://www.tiktok.com/@approximatelly/video/0000000000000000000 and is
+// replaced with the real posted URL before submit. A placeholder URL is a
+// hard error, since a submitted entry must name a real posted video.
+//
+// The video id is checked to be a plausible TikTok video id (10-19 digits,
+// not all zeros, never starting with 0); each failure has its own error
+// message, and the success output names the handle and the video id
+// separately.
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+const botDir = process.env.MAKEFUN_BOT_DIR ?? ".";
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "out";
+// The account this entry posts from (@approximatelly), the bounty account
+// (@approximatelly888), and its handle before TikTok renamed it
+// (@Approximatelly6): all three name accounts this entry may post from.
+const HANDLES = ["@approximatelly", "@approximatelly888", "@Approximatelly6"];
+const VIDEO_RE = /^https:\/\/www\.tiktok\.com\/@([A-Za-z0-9._]+)\/video\/([0-9]+)$/;
+
+const src = join(botDir, "VIDEO.json");
+const raw = readFileSync(src, "utf8");
+let video;
+try {
+  video = JSON.parse(raw);
+} catch {
+  console.error("VIDEO.json is not valid JSON");
+  process.exit(1);
+}
+if (typeof video.url !== "string" || video.url.length === 0) {
+  console.error("VIDEO.json must contain a string field 'url'");
+  process.exit(1);
+}
+const match = VIDEO_RE.exec(video.url);
+if (!match) {
+  console.error(`VIDEO.json url is not a full TikTok video address: ${video.url}`);
+  process.exit(1);
+}
+const handle = `@${match[1]}`;
+const videoId = match[2];
+if (!HANDLES.includes(handle)) {
+  console.error(`VIDEO.json url names ${handle} but this entry posts from ${HANDLES.join(" or ")}`);
+  process.exit(1);
+}
+if (/^0+$/.test(videoId)) {
+  console.error("VIDEO.json url still holds the placeholder video id; replace it with the posted video's address before submitting.");
+  process.exit(1);
+}
+if (videoId.length < 10 || videoId.length > 19) {
+  console.error(`VIDEO.json url has a video id of ${videoId.length} digits (${videoId}); a TikTok video id is 10-19 digits long.`);
+  process.exit(1);
+}
+if (videoId.startsWith("0")) {
+  console.error(`VIDEO.json url has a video id starting with 0 (${videoId}); a TikTok video id never starts with 0.`);
+  process.exit(1);
+}
+
+mkdirSync(outDir, { recursive: true });
+copyFileSync(src, join(outDir, "VIDEO.json"));
+const summary = {
+  competition: "bring-the-humans-03",
+  title: "What is make.fun?",
+  url: video.url,
+  handle,
+  video_id: videoId,
+  placeholder: false,
+  copied_to: join(outDir, "VIDEO.json"),
+};
+writeFileSync(join(outDir, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
+console.log(`OK: VIDEO.json -> ${join(outDir, "VIDEO.json")}`);
+console.log(`Handle: ${handle}`);
+console.log(`Video id: ${videoId}`);
+console.log(`URL: ${video.url}`);
